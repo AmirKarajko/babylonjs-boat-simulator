@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>babylon.js-Boat Simulator</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+    }
+    canvas {
+      width: 100%; height: 100%; touch-action: none;
+    }
+  </style>
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+  <script src="https://cdn.babylonjs.com/cannon.js"></script>
+</head>
+<body>
+<canvas id="renderCanvas"></canvas>
+<div style="
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: red;
+      font-size: 20px;
+      pointer-events: none;">
+    Welcome to the game! Use W/A/S/D to move.
+</div>
+<div id="score" style="
+      position: absolute;
+      top: 60px;
+      left: 20px;
+      color: red;
+      font-size: 30px;
+      pointer-events: none;">
+    Score: 0
+</div>
+<script>
+  const canvas = document.getElementById("renderCanvas");
+  const engine = new BABYLON.Engine(canvas, true);
+
+  const createScene = () => {
+    const scene = new BABYLON.Scene(engine);
+    scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), new BABYLON.CannonJSPlugin());
+
+    const camera = new BABYLON.ArcRotateCamera("camera", Math.PI / 2, Math.PI / 3.2, 60, BABYLON.Vector3.Zero(), scene);
+    camera.attachControl(canvas, true);
+
+    const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+
+    // Skybox
+    const skybox = BABYLON.MeshBuilder.CreateBox("skyBox", { size: 500 }, scene);
+    const skyboxMaterial = new BABYLON.StandardMaterial("skyBoxMaterial", scene);
+    skyboxMaterial.backFaceCulling = false;
+    skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture("https://playground.babylonjs.com/textures/skybox", scene);
+    skyboxMaterial.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
+    skyboxMaterial.disableLighting = true;
+    skybox.material = skyboxMaterial;
+
+    // Create a boat
+    const boat = BABYLON.MeshBuilder.CreateBox("box", { width: 10, height: 4, depth: 20 }, scene);
+    boat.position.y = 5;
+    boat.rotationQuaternion = new BABYLON.Quaternion.RotationYawPitchRoll(0, 0, 0);
+    boat.physicsImpostor = new BABYLON.PhysicsImpostor(
+      boat,
+      BABYLON.PhysicsImpostor.BoxImpostor,
+      { mass: 1, restitution: 0.4 },
+      scene
+    );
+    boat.physicsImpostor.physicsBody.linearDamping = 0.2;
+    boat.physicsImpostor.physicsBody.angularDamping = 0.4;
+
+    // Particle system for boat wake
+    const particleSystem = new BABYLON.ParticleSystem("particles", 1000, scene);
+    particleSystem.particleTexture = new BABYLON.Texture("https://playground.babylonjs.com/textures/flare.png", scene);
+    particleSystem.emitter = boat.position.clone();
+    particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0);
+    particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0);
+    particleSystem.color1 = new BABYLON.Color4(0.8, 0.9, 1, 0.8);
+    particleSystem.color2 = new BABYLON.Color4(0.2, 0.5, 1, 0.5);
+    particleSystem.colorDead = new BABYLON.Color4(0.2, 0.5, 1, 0.0);
+    particleSystem.minSize = 0.3;
+    particleSystem.maxSize = 1.2;
+    particleSystem.minLifeTime = 0.25;
+    particleSystem.maxLifeTime = 0.7;
+    particleSystem.emitRate = 0;
+    particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+    particleSystem.direction1 = new BABYLON.Vector3(-0.5, 0.7, -2.5);
+    particleSystem.direction2 = new BABYLON.Vector3(0.5, 1.2, -3.5);
+    particleSystem.minEmitPower = 2.5;
+    particleSystem.maxEmitPower = 5;
+    particleSystem.updateSpeed = 0.012;
+    particleSystem.gravity = new BABYLON.Vector3(0, -9, 0);
+    particleSystem.start();
+
+    // Water surface
+    const waterMesh = BABYLON.MeshBuilder.CreateGround("waterMesh", { width: 800, height: 800, subdivisions: 32 }, scene);
+    const waterMaterial = new BABYLON.WaterMaterial("waterMaterial", scene);
+    waterMaterial.bumpTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/waterbump.png", scene);
+    waterMaterial.windForce = -10;
+    waterMaterial.alpha = 0.8;
+    waterMaterial.backFaceCulling = false;
+    waterMaterial.windDirection = new BABYLON.Vector2(1, 1);
+    waterMaterial.waterColor = new BABYLON.Color3(0, 0.3, 0.6);
+    waterMaterial.colorBlendFactor = 0.3;
+    waterMaterial.addToRenderList(skybox);
+    waterMaterial.addToRenderList(boat);
+    waterMesh.material = waterMaterial;
+
+    function degToRad(degrees) {
+      return degrees * Math.PI / 180;
+    }
+
+    // Create walls
+    function createWall(name, position, rotation) {
+      const wall = BABYLON.MeshBuilder.CreateBox(name, { width: 800, height: 10, depth: 1 }, scene);
+      wall.position = position;
+      wall.rotation.y = degToRad(rotation);
+      wall.isVisible = true;
+      wall.physicsImpostor = new BABYLON.PhysicsImpostor(
+        wall,
+        BABYLON.PhysicsImpostor.BoxImpostor,
+        { mass: 0, restitution: 0.5 },
+        scene
+      );
+      return wall;
+    }
+
+    createWall("wall1", new BABYLON.Vector3(400, 5, 0), 90);
+    createWall("wall2", new BABYLON.Vector3(-400, 5, 0), 90);
+    createWall("wall3", new BABYLON.Vector3(0, 5, 400), 0);
+    createWall("wall4", new BABYLON.Vector3(0, 5, -400), 0);
+
+    // Create a score variable and display it
+    let score = 0;
+    const scoreDiv = document.getElementById("score");
+
+    // Create pickup boxes
+    const pickupBoxes = [];
+    const numPickups = 20;
+    for (let i = 0; i < numPickups; i++) {
+      const box = BABYLON.MeshBuilder.CreateBox("pickup" + i, { size: 3 }, scene);
+      box.position = new BABYLON.Vector3(
+        Math.random() * 700 - 350,
+        2,
+        Math.random() * 700 - 350
+      );
+      box.material = new BABYLON.StandardMaterial("pickupMat" + i, scene);
+      box.material.diffuseColor = new BABYLON.Color3(10, 10, 0); // yellow
+      pickupBoxes.push(box);
+    }
+
+    // Input handling
+    let inputMap = {};
+    scene.actionManager = new BABYLON.ActionManager(scene);
+    scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (e) => { inputMap[e.sourceEvent.key.toLowerCase()] = true; }));
+    scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (e) => { inputMap[e.sourceEvent.key.toLowerCase()] = false; }));
+
+    // Virtual Joystick for mobile
+    let leftJoystick = null;
+    if (/Mobi|Android|iPhone|iPad|iPod|BlackBerry/i.test(navigator.userAgent)) {
+      leftJoystick = new BABYLON.VirtualJoystick(true);
+    }
+
+    scene.registerBeforeRender(() => {
+      skybox.position.copyFrom(camera.position);
+
+      const forward = boat.forward.normalize();
+      const boatSpeed = 15;
+      const force = boatSpeed;
+      const angularIncrement = 0.005;
+
+      // Update particle system emitter position
+      const rearOffset = boat.forward.normalize().scale(-12);
+      const rearPosition = boat.position.add(rearOffset);
+      particleSystem.emitter = rearPosition;
+      // Emit only when moving forward or backward
+      const velocity = boat.physicsImpostor.getLinearVelocity();
+      const speed = velocity.length();
+      particleSystem.emitRate = speed > 1 ? 700 : 0;
+
+      if (leftJoystick !== null) {
+        if (leftJoystick.pressed) {
+          const deltaY = leftJoystick.deltaPosition.y;
+          const deltaX = leftJoystick.deltaPosition.x;
+
+          const forward = boat.forward.normalize();
+          const maxAngularVelocity = 2;
+
+          if (Math.abs(deltaY) > 0.01) {
+            const force = forward.scale(deltaY * speed);
+            boat.physicsImpostor.applyForce(force, boat.getAbsolutePosition());
+          }
+
+          if (Math.abs(deltaX) > 0.01) {
+            let angularY = deltaX * maxAngularVelocity;
+            boat.physicsImpostor.setAngularVelocity(new BABYLON.Vector3(0, angularY, 0));
+          } else {
+            const currentAngular = boat.physicsImpostor.getAngularVelocity();
+            boat.physicsImpostor.setAngularVelocity(new BABYLON.Vector3(
+              0,
+              currentAngular.y * 0.9,
+              0
+            ));
+          }
+          
+        }
+      }
+
+      if (inputMap["w"]) {
+        const f = forward.scale(force);
+        boat.physicsImpostor.applyForce(f, boat.getAbsolutePosition());
+      }
+      if (inputMap["s"]) {
+        const b = forward.scale(-force);
+        boat.physicsImpostor.applyForce(b, boat.getAbsolutePosition());
+      }
+      if (inputMap["a"]) {
+        const currentAngular = boat.physicsImpostor.getAngularVelocity();
+        boat.physicsImpostor.setAngularVelocity(new BABYLON.Vector3(
+          currentAngular.x,
+          currentAngular.y - angularIncrement,
+          currentAngular.z
+        ));
+      }
+      if (inputMap["d"]) {
+        const currentAngular = boat.physicsImpostor.getAngularVelocity();
+        boat.physicsImpostor.setAngularVelocity(new BABYLON.Vector3(
+          currentAngular.x,
+          currentAngular.y + angularIncrement,
+          currentAngular.z
+        ));
+      }
+
+      const rot = boat.rotationQuaternion.toEulerAngles();
+      boat.rotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(rot.y, 0, 0);
+
+      const bobbingSpeed = 2;
+      const bobbingForceMagnitude = 1;
+      const timeInSeconds = performance.now() * 0.001;
+      const verticalForce = Math.sin(timeInSeconds * bobbingSpeed) * bobbingForceMagnitude;
+
+      boat.physicsImpostor.applyForce(
+        new BABYLON.Vector3(0, verticalForce, 0),
+        boat.getAbsolutePosition()
+      );
+
+      // Pickup logic
+      for (let i = pickupBoxes.length - 1; i >= 0; i--) {
+        const box = pickupBoxes[i];
+        if (box && boat.intersectsMesh(box, false)) {
+          box.dispose();
+          pickupBoxes.splice(i, 1);
+          score++;
+          scoreDiv.textContent = "Score: " + score;
+        }
+      }
+
+      // Camera follow logic
+      const behind = forward.scale(-60);
+      const above = new BABYLON.Vector3(0, 15, 0);
+      const desiredPosition = boat.position.add(behind).add(above);
+      camera.position = BABYLON.Vector3.Lerp(camera.position, desiredPosition, 0.1);
+      camera.setTarget(boat.position);
+
+      // Water wave effect
+      const time = performance.now();
+      waterMaterial.waveHeight = Math.sin(time * 0.001) * 0.4 + 0.2;
+
+      const waterLevel = 0;
+      const boatBottomY = boat.position.y - 2;
+
+      if (boatBottomY < waterLevel) {
+        const depth = waterLevel - boatBottomY;
+        const buoyancy = Math.min(depth, 2) * 10;
+
+        boat.physicsImpostor.applyForce(
+          new BABYLON.Vector3(0, buoyancy, 0),
+          boat.getAbsolutePosition()
+        );
+      }
+    });
+
+    return scene;
+  };
+
+  const scene = createScene();
+  engine.runRenderLoop(() => scene.render());
+  window.addEventListener("resize", () => engine.resize());
+</script>
+</body>
+</html>

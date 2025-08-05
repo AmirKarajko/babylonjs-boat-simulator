@@ -15,6 +15,7 @@
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
   <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
   <script src="https://cdn.babylonjs.com/cannon.js"></script>
+  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 </head>
 <body>
 <canvas id="renderCanvas"></canvas>
@@ -70,6 +71,22 @@
     );
     boat.physicsImpostor.physicsBody.linearDamping = 0.2;
     boat.physicsImpostor.physicsBody.angularDamping = 0.4;
+
+    // Load boat.glb model
+    BABYLON.SceneLoader.ImportMesh(
+      null,
+      "assets/",
+      "boat.glb",
+      scene,
+      function (meshes) {
+        const glbBoat = meshes[0];
+        glbBoat.parent = boat;
+        glbBoat.position = BABYLON.Vector3.Zero();
+        glbBoat.rotation = BABYLON.Vector3.Zero();
+        glbBoat.scaling = new BABYLON.Vector3(1, 1, 1);
+        boat.isVisible = false;
+      }
+    );
 
     // Particle system for boat wake
     const particleSystem = new BABYLON.ParticleSystem("particles", 1000, scene);

@@ -51,7 +51,7 @@
     const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
 
     // Skybox
-    const skybox = BABYLON.MeshBuilder.CreateBox("skyBox", { size: 500 }, scene);
+    const skybox = BABYLON.MeshBuilder.CreateBox("skyBox", { size: 2000 }, scene);
     const skyboxMaterial = new BABYLON.StandardMaterial("skyBoxMaterial", scene);
     skyboxMaterial.backFaceCulling = false;
     skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture("https://playground.babylonjs.com/textures/skybox", scene);
